@@ -10,7 +10,7 @@
     }
 })();
 
-let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null; 
+let currentUser = JSON.parse(sessionStorage.getItem('currentUser')) || null;
 let editingEmail = null; 
 let editingEmployeeId = null;
 let editingDeptName = null;
@@ -19,6 +19,31 @@ let editingRequestId = null;
 function getAuthHeader() {
     const token = sessionStorage.getItem('authToken');
     return token ? { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' } : { 'Content-Type': 'application/json' };
+}
+
+async function loadAdminDashboard() {
+    try {
+        const res = await fetch('http://localhost:3000/api/admin/dashboard', {
+            headers: getAuthHeader()
+        });
+
+        const contentEl = document.getElementById('content'); 
+
+        if (res.ok) {
+            const data = await res.json();
+            if (contentEl) contentEl.innerText = data.message;
+            const adminNameDisplay = document.getElementById('admin-name-display');
+            const adminEmailDisplay = document.getElementById('admin-email-display');
+            if (adminNameDisplay) adminNameDisplay.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+            if (adminEmailDisplay) adminEmailDisplay.textContent = currentUser.email;
+        } else {
+            if (contentEl) contentEl.innerText = 'Access denied!';
+            alert('Access denied! Server blocked this request.');
+            window.location.hash = '#/dashboard';
+        }
+    } catch (err) {
+        console.error("Failed to load admin dashboard", err);
+    }
 }
 
 function navigateTo(hash) {
@@ -30,16 +55,48 @@ function updateNavbar() {
     const adminNav = document.getElementById('nav-admin');
     const userNav = document.getElementById('nav-user');
 
-    publicNav.classList.add('d-none');
-    adminNav.classList.add('d-none');
-    if(userNav) userNav.classList.add('d-none');
+    if (publicNav) publicNav.classList.add('d-none');
+    if (adminNav) adminNav.classList.add('d-none');
+    if (userNav) userNav.classList.add('d-none');
 
-    if (!currentUser) {
-        publicNav.classList.remove('d-none');
+    if (!sessionStorage.getItem('authToken') || !currentUser) {
+        if (publicNav) publicNav.classList.remove('d-none');
     } else if (currentUser.role === 'admin') {
-        adminNav.classList.remove('d-none');
+        if (adminNav) adminNav.classList.remove('d-none');
     } else {
-        if(userNav) userNav.classList.remove('d-none');
+        if (userNav) userNav.classList.remove('d-none');
+    }
+}
+
+function showDashboard(user) {
+    sessionStorage.setItem('currentUser', JSON.stringify(user));
+    currentUser = user; 
+    updateNavbar();
+    if (user.role === 'admin') {
+        window.location.hash = '#/admin-dashboard';
+    } else {
+        window.location.hash = '#/dashboard';
+    }
+}
+
+async function login(email, password) {
+    try {
+        const response = await fetch('http://localhost:3000/api/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+            sessionStorage.setItem('authToken', data.token);
+            showDashboard(data.user);
+        } else {
+            alert('Login failed: ' + data.error);
+        }
+    } catch (err) {
+        alert('Network error');
     }
 }
 
@@ -59,53 +116,53 @@ function handleRouting() {
             break;
         case '#/register':
             pageId = 'register-page';
-            document.getElementById('register-form').reset();
+            if (document.getElementById('register-form')) document.getElementById('register-form').reset();
             const regPw = document.getElementById('reg-password');
-            if(regPw) regPw.type = 'password';
+            if (regPw) regPw.type = 'password';
             break;
         case '#/login':
             pageId = 'login-page';
-            document.getElementById('login-form').reset(); 
+            if (document.getElementById('login-form')) document.getElementById('login-form').reset(); 
             const logPw = document.getElementById('login-password');
-            if(logPw) logPw.type = 'password';
+            if (logPw) logPw.type = 'password';
             break;
         case '#/admin-dashboard':
-            if (!currentUser || currentUser.role !== 'admin') {
+            if (!sessionStorage.getItem('authToken') || !currentUser || currentUser.role !== 'admin') {
                 alert("Admin access only.");
-                if (currentUser) window.location.hash = '#/dashboard';
-                else window.location.hash = '#/login';
+                window.location.hash = currentUser ? '#/dashboard' : '#/login';
                 return;
             }
             pageId = 'admin-dashboard-page';
-            document.getElementById('admin-name-display').textContent = `${currentUser.firstName} ${currentUser.lastName}`;
-            document.getElementById('admin-email-display').textContent = currentUser.email;
+            loadAdminDashboard(); 
             break;
         case '#/admin-employees':
-            if (!currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
+            if (!sessionStorage.getItem('authToken') || !currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
             pageId = 'admin-employees-page';
             renderEmployeesTable(); 
             break;
         case '#/admin-accounts':
-            if (!currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
+            if (!sessionStorage.getItem('authToken') || !currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
             pageId = 'admin-accounts-page';
             renderAccountsTable(); 
             break;
         case '#/dashboard':
-            if (!currentUser) {
+            if (!sessionStorage.getItem('authToken') || !currentUser) {
                 window.location.hash = '#/login'; 
                 return;
             }
             pageId = 'welcome-page';
-            document.getElementById('user-name-display').textContent = `${currentUser.firstName} ${currentUser.lastName}`;
-            document.getElementById('user-email-display').textContent = currentUser.email;
+            const userNameDisplay = document.getElementById('user-name-display');
+            const userEmailDisplay = document.getElementById('user-email-display');
+            if (userNameDisplay) userNameDisplay.textContent = `${currentUser.firstName} ${currentUser.lastName}`;
+            if (userEmailDisplay) userEmailDisplay.textContent = currentUser.email;
             break;
         case '#/admin-departments':
-            if (!currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
+            if (!sessionStorage.getItem('authToken') || !currentUser || currentUser.role !== 'admin') return navigateTo(currentUser ? '#/dashboard' : '#/login');
             pageId = 'admin-departments-page';
             renderDepartmentsTable(); 
             break;
         case '#/my-requests':
-            if (!currentUser) {
+            if (!sessionStorage.getItem('authToken') || !currentUser) {
                 window.location.hash = '#/login';
                 return;
             }
@@ -130,35 +187,11 @@ window.addEventListener('load', handleRouting);
 
 const loginForm = document.getElementById('login-form');
 if (loginForm) {
-    loginForm.addEventListener('submit', async function(e) {
+    loginForm.addEventListener('submit', function(e) {
         e.preventDefault();
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-
-        try {
-            const response = await fetch('http://localhost:3000/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            const data = await response.json();
-
-            if (response.ok) {
-                sessionStorage.setItem('authToken', data.token);
-                sessionStorage.setItem('currentUser', JSON.stringify(data.user));
-                currentUser = data.user; 
-                
-                if (currentUser.role === 'admin') {
-                    window.location.hash = '#/admin-dashboard';
-                } else {
-                    window.location.hash = '#/dashboard';
-                }
-            } else {
-                alert(data.error);
-            }
-        } catch (err) {
-            alert("Network Error.");
-        }
+        const emailInput = document.getElementById('login-email');
+        const passwordInput = document.getElementById('login-password');
+        login(emailInput.value, passwordInput.value);
     });
 }
 
@@ -166,12 +199,12 @@ const registerForm = document.getElementById('register-form');
 if (registerForm) {
     registerForm.addEventListener('submit', async function(e) {
         e.preventDefault(); 
-        const firstName = document.getElementById('reg-firstname').value;
-        const lastName = document.getElementById('reg-lastname').value;
-        const email = document.getElementById('reg-email').value;
-        const password = document.getElementById('reg-password').value;
+        const firstNameInput = document.getElementById('reg-firstname');
+        const lastNameInput = document.getElementById('reg-lastname');
+        const emailInput = document.getElementById('reg-email');
+        const passwordInput = document.getElementById('reg-password');
 
-        if (password.length < 6) { 
+        if (passwordInput.value.length < 6) { 
             alert("Password must be at least 6 characters."); 
             return; 
         }
@@ -180,7 +213,12 @@ if (registerForm) {
             const response = await fetch('http://localhost:3000/api/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ firstName, lastName, email, password })
+                body: JSON.stringify({ 
+                    firstName: firstNameInput.value,
+                    lastName: lastNameInput.value,
+                    email: emailInput.value, 
+                    password: passwordInput.value 
+                })
             });
             const data = await response.json();
 
@@ -188,10 +226,10 @@ if (registerForm) {
                 alert("Registration successful! You can now log in.");
                 window.location.hash = '#/login';
             } else {
-                alert(data.error); 
+                alert('Registration failed: ' + data.error); 
             }
         } catch (err) {
-            alert("Network Error.");
+            alert('Network error');
         }
     });
 }
@@ -203,6 +241,24 @@ window.logout = function() {
     updateNavbar(); 
     window.location.hash = '#/login';
 }
+
+window.toggleRegPassword = function() {
+    const pwInput = document.getElementById('reg-password');
+    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
+    else if (pwInput) pwInput.type = 'password';
+};
+
+window.toggleLoginPassword = function() {
+    const pwInput = document.getElementById('login-password');
+    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
+    else if (pwInput) pwInput.type = 'password';
+};
+
+window.toggleAdminPassword = function() {
+    const pwInput = document.getElementById('acc-password');
+    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
+    else if (pwInput) pwInput.type = 'password';
+};
 
 async function renderAccountsTable() {
     const tbody = document.getElementById('accounts-table-body');
@@ -364,24 +420,6 @@ window.deleteAccount = async function(emailToDelete) {
     } catch (err) {
         alert("Failed to delete account from server.");
     }
-};
-
-window.toggleAdminPassword = function() {
-    const pwInput = document.getElementById('acc-password');
-    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
-    else if (pwInput) pwInput.type = 'password';
-};
-
-window.toggleRegPassword = function() {
-    const pwInput = document.getElementById('reg-password');
-    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
-    else if (pwInput) pwInput.type = 'password';
-};
-
-window.toggleLoginPassword = function() {
-    const pwInput = document.getElementById('login-password');
-    if (pwInput && pwInput.type === 'password') pwInput.type = 'text';
-    else if (pwInput) pwInput.type = 'password';
 };
 
 function populateDepartmentDropdown() {
@@ -632,9 +670,9 @@ function renderRequestsTable() {
                             Set Status
                         </button>
                         <ul class="dropdown-menu shadow-sm">
-                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Pending')">🟡 Pending</a></li>
-                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Approved')">🟢 Approved</a></li>
-                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Cancelled')">🔴 Cancelled</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Pending')">Pending</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Approved')">Approved</a></li>
+                            <li><a class="dropdown-item" href="javascript:void(0)" onclick="changeReqStatus('${req.id}', 'Cancelled')">Cancelled</a></li>
                         </ul>
                     </div>
                 `;
@@ -691,7 +729,7 @@ window.editRequest = function(id) {
         const isLast = index === req.items.length - 1;
         const btnHtml = isLast 
             ? `<button type="button" class="btn btn-outline-secondary w-100" onclick="addItemRow()">+</button>`
-            : `<button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.item-row').remove()">×</button>`;
+            : `<button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.item-row').remove()">x</button>`;
 
         div.innerHTML = `
             <div class="col-8"><input type="text" class="form-control item-name" value="${item.name}" required></div>
@@ -713,7 +751,7 @@ window.addItemRow = function() {
         const cols = lastRow.querySelectorAll('.col-2');
         
         if (cols.length > 1) {
-            cols[1].innerHTML = `<button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.item-row').remove()">×</button>`;
+            cols[1].innerHTML = `<button type="button" class="btn btn-outline-danger w-100" onclick="this.closest('.item-row').remove()">x</button>`;
         }
     }
 
